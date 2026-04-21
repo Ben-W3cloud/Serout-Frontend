@@ -1,12 +1,23 @@
+import type { KeyboardEvent } from "react";
+import { useChat } from "@/components/chat/ChatContext";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 export function InputBar() {
+  const { draft, sendMessage, setDraft } = useChat();
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      sendMessage();
+    }
+  };
+
   return (
-    <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20 flex flex-col items-center justify-end bg-gradient-to-t from-background via-background/90 to-transparent px-4 pt-12 pb-8 md:left-72 sm:px-8">
-      <div className="pointer-events-auto relative w-full max-w-3xl">
+    <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20 flex flex-col items-center justify-end bg-gradient-to-t from-background via-background/90 to-transparent px-4 pt-12 pb-8 sm:px-8">
+      <div className="pointer-events-auto mx-auto w-full max-w-3xl">
         <div className="pointer-events-none absolute -inset-2 rounded-[2.5rem] bg-gradient-to-r from-primary/20 via-tertiary/10 to-secondary/20 opacity-30 blur-xl transition duration-700" />
 
-        <div className="relative flex items-end rounded-[2rem] border border-outline-variant/20 bg-surface-variant/60 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-[32px] transition-colors focus-within:border-primary/50">
+        <div className="relative flex items-end rounded-[2rem] border border-outline-variant/20 bg-surface-variant/60 p-2 backdrop-blur-[32px] transition-colors focus-within:border-primary/50">
           <button
             type="button"
             className="mb-0 flex-shrink-0 rounded-full p-3 text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-primary"
@@ -18,7 +29,10 @@ export function InputBar() {
             <input
               type="text"
               placeholder="Command Serout..."
-              className="h-full w-full border-none bg-transparent p-0 m-0 font-body text-[15px] text-on-surface outline-none placeholder:text-on-surface-variant/50 focus:ring-0"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={handleKeyDown}
+              className="m-0 h-full w-full border-none bg-transparent p-0 font-body text-[15px] text-on-surface outline-none placeholder:text-on-surface-variant/50 focus:ring-0"
             />
           </div>
 
@@ -31,7 +45,8 @@ export function InputBar() {
             </button>
             <button
               type="button"
-              className="ml-1 flex h-12 w-12 items-center justify-center rounded-full border border-primary/50 bg-gradient-to-tr from-primary to-primary-container text-on-primary shadow-[0_0_20px_rgba(0,238,252,0.25)] transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,238,252,0.5)] active:scale-95"
+              onClick={sendMessage}
+              className="ml-1 flex h-12 w-12 items-center justify-center rounded-full border border-primary/50 bg-gradient-to-tr from-primary to-primary-container text-on-primary transition-all hover:scale-[1.02] active:scale-95"
             >
               <MaterialIcon
                 name="arrow_upward"
