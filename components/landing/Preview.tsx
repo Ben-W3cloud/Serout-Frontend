@@ -49,7 +49,7 @@ export function Preview() {
             </div>
           </div>
 
-          <div className="flex-1 space-y-6 overflow-y-auto p-6">
+          <div className="flex-1 space-y-6 overflow-y-hidden p-6">
             <div className="flex justify-end">
               <div className="max-w-[80%] rounded-t-[1.5rem] rounded-bl-[1.5rem] border border-outline-variant/10 bg-surface-container-high p-4 text-sm">
                 Route 10,000 USDC from Arbitrum to Optimism. Prioritize speed.

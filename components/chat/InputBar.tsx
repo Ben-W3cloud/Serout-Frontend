@@ -13,9 +13,9 @@ export function InputBar() {
   };
 
   return (
-    <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20 flex flex-col items-center justify-end bg-gradient-to-t from-background via-background/90 to-transparent px-4 pt-12 pb-8 sm:px-8">
+    <div className=" pointer-events-none absolute right-0 bottom-0 left-0 z-30 flex flex-col items-center justify-end px-4 pt-12 pb-8 sm:px-8">
       <div className="pointer-events-auto mx-auto w-full max-w-3xl">
-        <div className="pointer-events-none absolute -inset-2 rounded-[2.5rem] bg-gradient-to-r from-primary/20 via-tertiary/10 to-secondary/20 opacity-30 blur-xl transition duration-700" />
+        <div className="pointer-events-none absolute -inset-2 rounded-[2.5rem] " />
 
         <div className="relative flex items-end rounded-[2rem] border border-outline-variant/20 bg-surface-variant/60 p-2 backdrop-blur-[32px] transition-colors focus-within:border-primary/50">
           <button
@@ -59,10 +59,10 @@ export function InputBar() {
       </div>
 
       <div className="pointer-events-auto mt-4 max-w-md text-center text-[11px] text-on-surface-variant/50">
-        Neural routing algorithms execute across live mainnets. Verify all
-        transaction parameters and destination addresses prior to final
-        authorization.
+        Verify all transaction parameters and destination addresses prior to final
+        authorization. 
       </div>
     </div>
   );
 }
+//bg-gradient-to-r from-primary/20 via-tertiary/10 to-secondary/20 opacity-30 blur-xl transition duration-700

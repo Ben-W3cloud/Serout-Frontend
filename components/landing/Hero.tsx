@@ -12,10 +12,10 @@ export function Hero() {
       className="flex min-h-[716px] flex-col items-center justify-between gap-16 md:flex-row"
     >
       <div className="z-10 flex flex-1 flex-col items-start gap-10">
-        <div className="inline-flex items-center gap-2 rounded-full border border-outline-variant/15 bg-surface-container-high px-4 py-2 font-label text-sm text-primary">
+        {/* <div className="inline-flex items-center gap-2 rounded-full border border-outline-variant/15 bg-surface-container-high px-4 py-2 font-label text-sm text-primary">
           <MaterialIcon name="bolt" className="text-[16px]" />
           <span>Intelligent Routing Active</span>
-        </div>
+        </div> */}
 
         <h1 className="bg-gradient-to-r from-on-surface to-primary-container bg-clip-text font-headline text-6xl font-bold leading-none tracking-tighter text-transparent md:text-8xl">
           Route Your

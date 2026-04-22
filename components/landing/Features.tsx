@@ -30,7 +30,6 @@ const features: FeatureCard[] = [
     tone: "secondary",
     spanClass: "md:col-span-4",
     iconClassName: "text-6xl",
-    subtleIcon: true,
   },
   {
     title: "Onchain Execution",
@@ -40,7 +39,6 @@ const features: FeatureCard[] = [
     tone: "tertiary",
     spanClass: "md:col-span-4",
     iconClassName: "text-6xl",
-    subtleIcon: true,
   },
   {
     title: "Transparent Fees",

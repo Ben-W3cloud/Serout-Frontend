@@ -1,4 +1,5 @@
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import Link  from "next/link"
 
 export function CTA() {
   return (
@@ -14,9 +15,12 @@ export function CTA() {
         Stop guessing with your cross-chain transactions. Start routing smarter
         today.
       </p>
+
+      <Link href="/signup">
       <PrimaryButton size="xl" className="mt-4">
         Launch App
       </PrimaryButton>
+      </Link>
     </section>
   );
 }

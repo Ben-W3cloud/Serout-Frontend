@@ -145,7 +145,7 @@ export function AppShell({ children }: AppShellProps) {
           </div>
         </header>
 
-        <div className="relative flex-1 overflow-y-auto px-4 py-8 pb-40 sm:px-6 lg:px-12">
+        <div className="relative flex-1 overflow-hidden px-4 py-8 pb-40 sm:px-6 lg:px-12">
           {children}
         </div>
       </main>
