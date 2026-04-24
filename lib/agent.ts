@@ -1,5 +1,5 @@
 export async function processMessage(message: string, fromAddress: string) {
-  
+
   // Step 1 — parse the message
   const parseResponse = await fetch("/api/agent/parse", {
     method: "POST",

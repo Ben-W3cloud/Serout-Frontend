@@ -20,6 +20,8 @@ export interface SeroutRoute {
     reliable: boolean
   }
 }
+
+export const NIGERIAN_BANKS = ["GTBank", "Access", "Zenith", "UBA", "First Bank", "Kuda", "Opay", "Wema", "Fidelity", "Polaris", "Standard Chartered", "Union Bank"]
 // // wallet transfer
 // { "destination": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU" }
 

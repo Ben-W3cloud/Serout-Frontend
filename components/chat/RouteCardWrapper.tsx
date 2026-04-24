@@ -29,6 +29,7 @@ export function RouteCardWrapper({ route, onSelect }: {
       path={path}
       received={`${route.estimatedOutput} ${route.outputToken}`}
       duration={route.estimatedTime}
+      onSelect={() => onSelect(route)}
     />
   )
 }

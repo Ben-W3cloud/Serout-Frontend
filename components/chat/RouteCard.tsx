@@ -14,6 +14,7 @@ type RouteCardProps = {
   path: RouteStep[];
   received: string;
   duration: string;
+  onSelect: () => void;
 };
 
 const toneStyles = {
@@ -51,6 +52,7 @@ export function RouteCard({
   path,
   received,
   duration,
+  onSelect,
 }: RouteCardProps) {
   const styles = toneStyles[tone];
 
@@ -130,6 +132,7 @@ export function RouteCard({
 
       <button
         type="button"
+        onClick={onSelect}
         className={cn(
           "relative z-10 mt-auto w-full rounded-xl border border-outline-variant/30 bg-surface-container-low py-3.5 text-sm font-semibold text-on-surface shadow-sm transition-all duration-300",
           styles.button,
