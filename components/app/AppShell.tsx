@@ -1,11 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useChat } from "@/components/chat/ChatContext";
+import { WalletConnectModal } from "@/components/modals/WalletConnectModal"
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { cn } from "@/components/ui/cn";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 type AppShellProps = {
   children: ReactNode;
@@ -22,13 +25,27 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { resetChat } = useChat();
+  const [walletModalOpen, setWalletModalOpen] = useState(false)
 
   const handleNewChat = () => {
     resetChat();
     router.push("/chat");
   };
 
-  return (
+  const { wallet, connect, connected, connecting, publicKey } = useWallet();
+  console.log("Connected:", connected)
+  console.log("Public key:", publicKey?.toString())
+
+  useEffect(() => {
+    if (wallet && !connected && !connecting) {
+      connect().catch((error) => {
+        console.log("Error name:", error.name)
+        console.log("Error message:", error.message)
+      })
+    }
+  }, [wallet, connected, connecting])
+
+ return (
     <div className="flex min-h-screen overflow-hidden bg-background text-on-background selection:bg-primary/30 selection:text-primary">
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <div className="absolute top-[-20%] left-[-10%] h-[50%] w-[50%] rounded-full bg-primary/5 blur-[120px]" />
@@ -133,8 +150,13 @@ export function AppShell({ children }: AppShellProps) {
             <button
               type="button"
               className="rounded-xl border border-primary/50 bg-gradient-to-r from-primary to-primary-container px-5 py-2.5 text-sm font-bold text-on-primary transition-all hover:shadow-[0_0_15px_rgba(0,240,255,0.4)] active:scale-95"
-            >
-              Connect Wallet
+              onClick={() => !connected && setWalletModalOpen(true)}>
+              {connected && publicKey 
+                ? `${publicKey.toString().slice(0, 4)}...${publicKey.toString().slice(-4)}`
+                : connecting 
+                ? "Connecting..." 
+                : "Connect Wallet"
+              }
             </button>
             <Link
               href="/profile"
@@ -145,10 +167,14 @@ export function AppShell({ children }: AppShellProps) {
           </div>
         </header>
 
-        <div className="relative flex-1 overflow-hidden px-4 py-8 pb-40 sm:px-6 lg:px-12">
+        <div className="relative flex-1 overflow-y-auto overflow-x-hidden px-4 py-8 pb-40 sm:px-6 lg:px-12">
           {children}
         </div>
       </main>
+       <WalletConnectModal 
+        isOpen={walletModalOpen}
+        onClose={() => setWalletModalOpen(false)}
+      />
     </div>
   );
 }

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getJupiterQuote } from '@/lib/jupiter';
+import { generateSwapRoutes } from '@/lib/jupiter';
+import { generateDirectRoutes } from '@/lib/transfer';
+import { generateBankRoutes } from '@/lib/bank';
 
-export async function POST(req: NextRequest) {
+// fromAddress: publicKey?.toString()
+
+export async function POST(req: NextRequest) { 
   const body = await req.json();
   console.log(body);
 
@@ -10,25 +14,32 @@ export async function POST(req: NextRequest) {
   const isDirect = typeof body.destination === "string" && body.sourceToken === body.destinationToken
 
   if (isBankTransfer) {
-    return NextResponse.json({type : "bank", routes : []})
+    const routes = generateBankRoutes(
+        body.amount,
+        body.sourceToken,
+        body.destination
+    )
+    return NextResponse.json({type : "bank", routes})
   }
 
   if (isDirect) {
-    return NextResponse.json({type: "direct", routes : [] })
+    const routes = generateDirectRoutes(
+        body.sourceToken, 
+        body.amount, 
+        body.fromAddress,
+        body.destination
+    )
+    console.log(routes)
+    return NextResponse.json({type: "direct", routes})
   }
 
   if (isSwap) {
-    const quote = await getJupiterQuote(
+    const routes = await generateSwapRoutes(
     body.sourceToken,
     body.destinationToken,
     body.amount)
 
-    console.log(quote)
-
-    return NextResponse.json({type: "swap", routes : [] })
+    console.log(routes)
+    return NextResponse.json({type: "swap", routes })
   }
-  
-  // 3. Based on transfer type, build routes differently
-  
-  // 4. Return the routes array
 }

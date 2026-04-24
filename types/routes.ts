@@ -1,8 +1,8 @@
 /* direct is for wallet to wallet, swap is for token swap, bank is for tx which involve local Nigerian banks */
 
-export type TransferType = " direct" | "swap" | "bank";
+export type TransferType = "direct" | "swap" | "bank";
 
-export type RouteTag = "Fastest" | " Cheapest" | "Best Value" | "Most Reliable";
+export type RouteTag = "Fastest" | "Cheapest" | "Best Value" ;
 
 export interface SeroutRoute {
   id: string              // unique id for this route
@@ -20,12 +20,6 @@ export interface SeroutRoute {
     reliable: boolean
   }
 }
-// {
-//   "amount": 1,
-//   "sourceToken": "SOL",
-//   "destinationToken": "USDC",
-//   "destination": "somewalletaddress"
-// }
 // // wallet transfer
 // { "destination": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU" }
 

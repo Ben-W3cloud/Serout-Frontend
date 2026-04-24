@@ -13,7 +13,7 @@ export function InputBar() {
   };
 
   return (
-    <div className=" pointer-events-none absolute right-0 bottom-0 left-0 z-30 flex flex-col items-center justify-end px-4 pt-12 pb-8 sm:px-8">
+    <div className= "pointer-events-none fixed right-0 bottom-0 left-0 z-30 flex flex-col items-center justify-end px-3 pt-12 pb-8 sm:px-8">
       <div className="pointer-events-auto mx-auto w-full max-w-3xl">
         <div className="pointer-events-none absolute -inset-2 rounded-[2.5rem] " />
 

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+import { SolanaWalletProvider } from "@/components/WalletProvider";
+import { useMemo } from "react";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -23,6 +25,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  
   return (
     <html
       lang="en"
@@ -38,7 +41,9 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full bg-background font-body text-on-background">
-        {children}
+        <SolanaWalletProvider>
+          {children}
+        </SolanaWalletProvider>
       </body>
     </html>
   );

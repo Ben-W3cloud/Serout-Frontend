@@ -2,6 +2,7 @@
 
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { cn } from "@/components/ui/cn";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 type WalletId = "phantom" | "solflare";
 
@@ -16,7 +17,7 @@ type WalletOption = {
 type WalletConnectModalProps = {
   isOpen: boolean;
   onClose?: () => void;
-  onSelectWallet?: (wallet: WalletId) => void;
+  onSelectWallet?: (walletId: WalletId) => void;
   showSolflare?: boolean;
 };
 
@@ -45,6 +46,15 @@ export function WalletConnectModal({
   onSelectWallet,
   showSolflare = true,
 }: WalletConnectModalProps) {
+
+  const { select } = useWallet()  // only select, nothing else
+    
+  const handleConnect = async (option : any) => {
+   const walletName = option.id === "phantom" ? "Phantom" : "Solflare"
+   select(walletName as any)
+   onClose?.()
+  }
+
   const options = showSolflare
     ? walletOptions
     : walletOptions.filter((option) => option.id !== "solflare");
@@ -122,7 +132,7 @@ export function WalletConnectModal({
                 key={option.id}
                 type="button"
                 className="group relative block w-full overflow-hidden rounded-[1.25rem] border border-outline-variant/20 bg-surface-container-low/80 p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-surface-container hover:shadow-[0_16px_30px_rgba(0,0,0,0.28)]"
-                onClick={() => onSelectWallet?.(option.id)}
+                onClick={() => handleConnect(option)}
               >
                 <div
                   className={cn(

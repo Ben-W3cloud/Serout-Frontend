@@ -18,3 +18,9 @@ export function toSmallestUnit(amount: number, token: string): number {
   let newAmount = amount * ( 10**decimals);
   return newAmount;
 }
+
+export function maskTenDigits(digits: string | number): string {
+  const str = digits.toString();
+  
+  return str.slice(-4).padStart(10, '*');
+}
