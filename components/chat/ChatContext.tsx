@@ -1,12 +1,5 @@
 // FILE LOCATION: components/chat/ChatContext.tsx
-//
-// WHAT CHANGED FROM BEFORE:
-// - Added selectedRoute state — stores which route the user clicked
-// - Added simulationResult state — stores result from /api/simulate
-// - Added selectRoute() function — called when user clicks "Select Route"
-// - selectRoute() calls /api/simulate automatically after selection
-// - Added confirmTransaction() — called when user clicks "Confirm"
-// - confirmTransaction() calls /api/execute then polls /api/transaction/:sig
+// REPLACE YOUR ENTIRE EXISTING FILE WITH THIS
 
 "use client";
 
@@ -27,25 +20,25 @@ type ChatMessage = {
   id: string;
   role: "user" | "agent";
   content: string;
-  routes?: SeroutRoute[]
-  transferType?: TransferType
-  isLoading?: boolean
-  simulation?: any      // holds simulation result when showing confirmation step
-  confirmed?: boolean   // true after transaction completes
+  routes?: SeroutRoute[];
+  transferType?: TransferType;
+  isLoading?: boolean;
+  simulation?: any;
+  confirmed?: boolean;
 };
 
 type ChatContextValue = {
   draft: string;
   messages: ChatMessage[];
-  selectedRoute: SeroutRoute | null;   // currently selected route
-  simulationResult: any | null;        // result from /api/simulate
-  isSimulating: boolean;               // true while /api/simulate is loading
-  isExecuting: boolean;                // true while /api/execute is running
+  selectedRoute: SeroutRoute | null;
+  simulationResult: any | null;
+  isSimulating: boolean;
+  isExecuting: boolean;
   resetChat: () => void;
   sendMessage: () => Promise<void>;
   setDraft: (value: string) => void;
-  selectRoute: (route: SeroutRoute) => Promise<void>;    // user clicks Select Route
-  confirmTransaction: () => Promise<void>;               // user clicks Confirm
+  selectRoute: (route: SeroutRoute) => Promise<void>;
+  confirmTransaction: () => Promise<void>;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -58,7 +51,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [isSimulating, setIsSimulating] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
 
-  // Get wallet access — publicKey for fromAddress, signTransaction for execution
+  // ─── NEW: store the parsed intent so confirmTransaction
+  // can access the original destination address the user typed ───
+  const [currentIntent, setCurrentIntent] = useState<any | null>(null);
+
   const { publicKey, signTransaction } = useWallet();
 
   const resetChat = useCallback(() => {
@@ -66,66 +62,78 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setMessages([]);
     setSelectedRoute(null);
     setSimulationResult(null);
+    setCurrentIntent(null); // ← clear intent on reset
   }, []);
 
-  // Called when user sends a message
+  // ─── SEND MESSAGE ─────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
     const trimmedDraft = draft.trim();
     if (!trimmedDraft) return;
 
-    // Add user message immediately
+    // 1. Add user message immediately
     setMessages((prev) => [
       ...prev,
       { id: `${Date.now()}`, role: "user", content: trimmedDraft },
     ]);
     setDraft("");
 
-    // Add loading placeholder for agent response
-    const loadingId = `loading-${Date.now()}`
+    // 2. Add agent loading placeholder
+    const loadingId = `loading-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
-      { id: loadingId, role: "agent", content: "Analyzing your request...", isLoading: true }
-    ])
+      {
+        id: loadingId,
+        role: "agent",
+        content: "Analyzing your request...",
+        isLoading: true,
+      },
+    ]);
 
     try {
-      const fromAddress = publicKey?.toString() ?? ""
-      const result = await processMessage(trimmedDraft, fromAddress)
+      const fromAddress = publicKey?.toString() ?? "";
+      const result = await processMessage(trimmedDraft, fromAddress);
 
-      // Replace loading message with routes
+      // ─── NEW: save the parsed intent for use during execution ───
+      setCurrentIntent(result.intent);
+
+      // 3. Replace loading with routes
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === loadingId
             ? {
-                id: loadingId,
-                role: "agent",
-                content: `I found ${result.routes.length} routes for your transfer. Select one to simulate.`,
-                routes: result.routes,
-                transferType: result.type,
-                isLoading: false,
-              }
+              id: loadingId,
+              role: "agent",
+              content: `I found ${result.routes.length} routes for your transfer. Select one to simulate.`,
+              routes: result.routes,
+              transferType: result.type,
+              isLoading: false,
+            }
             : msg
         )
       );
-    } catch (error) {
+    } catch {
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === loadingId
-            ? { id: loadingId, role: "agent", content: "Something went wrong. Please try again.", isLoading: false }
+            ? {
+              id: loadingId,
+              role: "agent",
+              content: "Something went wrong. Please try again.",
+              isLoading: false,
+            }
             : msg
         )
       );
     }
   }, [draft, publicKey]);
 
-  // Called when user clicks "Select Route" on a RouteCard
+  // ─── SELECT ROUTE → TRIGGER SIMULATION ───────────────────────
   const selectRoute = useCallback(async (route: SeroutRoute) => {
-    // Store the selected route
-    setSelectedRoute(route)
-    setIsSimulating(true)
-    setSimulationResult(null)
+    setSelectedRoute(route);
+    setIsSimulating(true);
+    setSimulationResult(null);
 
-    // Add a loading message while simulation runs
-    const simLoadingId = `sim-loading-${Date.now()}`
+    const simLoadingId = `sim-loading-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
       {
@@ -133,175 +141,287 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         role: "agent",
         content: `Simulating ${route.tag} route...`,
         isLoading: true,
-      }
-    ])
+      },
+    ]);
 
     try {
-      // Call /api/simulate with the selected route
       const response = await fetch("/api/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ route })
-      })
-      const data = await response.json()
+        body: JSON.stringify({ route }),
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error);
 
-      if (!data.success) throw new Error(data.error)
+      setSimulationResult(data.simulation);
 
-      // Store simulation result in state — used later by confirmTransaction
-      setSimulationResult(data.simulation)
-
-      // Replace loading message with simulation result
-      // The simulation message has a special flag so the UI renders
-      // a confirmation card instead of plain text
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === simLoadingId
             ? {
-                id: simLoadingId,
-                role: "agent",
-                content: "Here's your simulation result. Review and confirm to proceed.",
-                simulation: data.simulation,  // UI will render a SimulationCard
-                isLoading: false,
-              }
+              id: simLoadingId,
+              role: "agent",
+              content:
+                "Here's your simulation result. Review and confirm to proceed.",
+              simulation: data.simulation,
+              isLoading: false,
+            }
             : msg
         )
-      )
+      );
     } catch (error: any) {
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === simLoadingId
-            ? { id: simLoadingId, role: "agent", content: `Simulation failed: ${error.message}`, isLoading: false }
+            ? {
+              id: simLoadingId,
+              role: "agent",
+              content: `Simulation failed: ${error.message}`,
+              isLoading: false,
+            }
             : msg
         )
-      )
+      );
     } finally {
-      setIsSimulating(false)
+      setIsSimulating(false);
     }
-  }, [])
+  }, []);
 
-  // Called when user clicks "Confirm & Execute"
+  // ─── CONFIRM & EXECUTE ────────────────────────────────────────
   const confirmTransaction = useCallback(async () => {
-    // Can't execute without these
-    if (!selectedRoute || !simulationResult || !publicKey) return
+    if (!selectedRoute || !simulationResult || !publicKey) return;
 
-    setIsExecuting(true)
+    // Guard — wallet must be connected and able to sign
+    if (!signTransaction) {
+      alert("Please connect your wallet before executing.");
+      return;
+    }
 
-    // Add executing loading message
-    const execLoadingId = `exec-loading-${Date.now()}`
+    setIsExecuting(true);
+
+    const execLoadingId = `exec-loading-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
-      { id: execLoadingId, role: "agent", content: "Executing transaction...", isLoading: true }
-    ])
+      {
+        id: execLoadingId,
+        role: "agent",
+        content: "Executing transaction...",
+        isLoading: true,
+      },
+    ]);
 
     try {
-      // Step 1 — Call /api/execute to build the transaction
+      const fromAddress = publicKey.toString();
+
+      // ── Step 1: Call /api/execute to get transaction data ──────
       const executeResponse = await fetch("/api/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           simulation: simulationResult,
           route: selectedRoute,
-          fromAddress: publicKey.toString(),
-        })
-      })
-      const executeData = await executeResponse.json()
-      if (!executeData.success) throw new Error(executeData.error)
+          fromAddress,
+        }),
+      });
+      const executeData = await executeResponse.json();
+      if (!executeData.success) throw new Error(executeData.error);
 
-      // Step 2 — For swap: sign and send the transaction
-      // The wallet adapter handles this — user approves in Phantom popup
-      let signature = ""
+      let signature = "";
 
-      if (selectedRoute.transferType === "swap" && executeData.swapTransaction) {
-        // Deserialize the transaction Jupiter built
-        const { VersionedTransaction } = await import("@solana/web3.js")
-        const transactionBuffer = Buffer.from(executeData.swapTransaction, "base64")
-        const transaction = VersionedTransaction.deserialize(transactionBuffer)
+      // ══════════════════════════════════════════════════════════
+      // SWAP EXECUTION
+      // Jupiter builds the transaction on the server (/api/execute)
+      // and returns it as a base64 string. We deserialize it here,
+      // ask the user to sign it via Phantom, then broadcast it.
+      // ══════════════════════════════════════════════════════════
+      if (
+        selectedRoute.transferType === "swap" &&
+        executeData.swapTransaction
+      ) {
+        // Dynamically import to avoid SSR issues
+        const { VersionedTransaction, Connection } = await import(
+          "@solana/web3.js"
+        );
 
-        // Ask user to sign it via Phantom — this opens the popup
-        if (!signTransaction) throw new Error("Wallet not connected")
-        const signedTx = await signTransaction(transaction)
+        // Deserialize the base64 transaction Jupiter returned
+        const transactionBuffer = Buffer.from(
+          executeData.swapTransaction,
+          "base64"
+        );
+        const transaction = VersionedTransaction.deserialize(transactionBuffer);
 
-        // Broadcast the signed transaction to Solana
-        const { Connection, clusterApiUrl } = await import("@solana/web3.js")
-        const connection = new Connection(clusterApiUrl("mainnet-beta"))
-        signature = await connection.sendRawTransaction(signedTx.serialize())
+        // Open Phantom popup — user reviews and approves the swap
+        const signedTx = await signTransaction(transaction as any);
+
+        // Connect to devnet and broadcast the signed transaction
+        // IMPORTANT: Change "devnet" to "mainnet-beta" for production
+        const connection = new Connection(
+          "https://api.devnet.solana.com",
+          "confirmed"
+        );
+        signature = await connection.sendRawTransaction(signedTx.serialize(), {
+          // Skip preflight for speed — the simulation already verified it
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+        });
       }
 
-      // Step 3 — For bank routes, call /api/payout after execution
+      // ══════════════════════════════════════════════════════════
+      // DIRECT TRANSFER EXECUTION
+      // No Jupiter involved. We build a simple SOL transfer
+      // transaction here on the client using SystemProgram.transfer,
+      // sign it with the wallet, and broadcast it to Solana.
+      // ══════════════════════════════════════════════════════════
+      if (selectedRoute.transferType === "direct") {
+        const {
+          SystemProgram,
+          Transaction,
+          PublicKey,
+          Connection,
+        } = await import("@solana/web3.js");
+
+        // Connect to devnet
+        // IMPORTANT: Change to "https://api.mainnet-beta.solana.com" for production
+        const connection = new Connection(
+          "https://api.devnet.solana.com",
+          "confirmed"
+        );
+
+        // The destination address comes from the original parsed intent
+        // currentIntent.destination is the wallet address the user typed
+        const destinationAddress = currentIntent?.destination;
+        if (!destinationAddress || typeof destinationAddress !== "string") {
+          throw new Error("Invalid destination address");
+        }
+
+        // Convert SOL amount to lamports (1 SOL = 1,000,000,000 lamports)
+        const lamports = Math.round(simulationResult.inputAmount * 1_000_000_000);
+
+        // Build the transfer transaction
+        // SystemProgram.transfer moves SOL between two wallets
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: new PublicKey(fromAddress),   // sender's wallet
+            toPubkey: new PublicKey(destinationAddress), // recipient's wallet
+            lamports,                                  // amount in lamports
+          })
+        );
+
+        // Solana requires a recent blockhash to prevent replay attacks
+        // Think of it as a transaction timestamp
+        const { blockhash, lastValidBlockHeight } =
+          await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = new PublicKey(fromAddress);
+
+        // Open Phantom popup for user to approve
+        const signedTx = await signTransaction(transaction);
+
+        // Broadcast to Solana network
+        signature = await connection.sendRawTransaction(signedTx.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+        });
+
+        // Wait for confirmation before reporting success
+        // This ensures the transaction actually landed
+        await connection.confirmTransaction({
+          signature,
+          blockhash,
+          lastValidBlockHeight,
+        });
+      }
+
+      // ── Step 3: Bank payout ────────────────────────────────────
+      // Only runs after an onchain swap that ends in a bank payout
       if (selectedRoute.transferType === "bank" && signature) {
         await fetch("/api/payout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             signature,
-            bankDetails: selectedRoute.meta,
+            bankDetails: currentIntent?.destination,
             amount: simulationResult.outputAmount,
             gateway: selectedRoute.meta.label.split(" → ")[0],
-          })
-        })
+          }),
+        });
       }
 
-      // Step 4 — Poll /api/transaction/:signature for confirmation
-      // We check every 3 seconds until confirmed or failed
+      // ── Step 4: Poll for onchain confirmation ──────────────────
+      // For swap and direct — poll every 3 seconds until confirmed
       if (signature) {
         const pollInterval = setInterval(async () => {
-          const statusResponse = await fetch(`/api/transaction/${signature}`)
-          const statusData = await statusResponse.json()
+          const statusResponse = await fetch(
+            `/api/transaction/${signature}`
+          );
+          const statusData = await statusResponse.json();
 
-          if (statusData.status === "confirmed" || statusData.status === "failed") {
-            // Stop polling
-            clearInterval(pollInterval)
+          if (
+            statusData.status === "confirmed" ||
+            statusData.status === "failed"
+          ) {
+            clearInterval(pollInterval);
 
-            // Replace loading message with final result
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === execLoadingId
                   ? {
-                      id: execLoadingId,
-                      role: "agent",
-                      content: statusData.status === "confirmed"
-                        ? `Transaction confirmed! View on Solscan: ${statusData.explorerUrl}`
-                        : "Transaction failed. Please try again.",
-                      confirmed: statusData.status === "confirmed",
-                      isLoading: false,
-                    }
+                    id: execLoadingId,
+                    role: "agent",
+                    content:
+                      statusData.status === "confirmed"
+                        ? `✅ Transaction confirmed! View on Solscan: ${statusData.explorerUrl}`
+                        : "❌ Transaction failed. Please try again.",
+                    confirmed: statusData.status === "confirmed",
+                    isLoading: false,
+                  }
                   : msg
               )
-            )
-            setIsExecuting(false)
+            );
+            setIsExecuting(false);
           }
-        }, 3000) // poll every 3 seconds
+        }, 3000);
       } else {
-        // Bank/direct — no signature polling needed, just show success
+        // Bank mock — no signature, show payout reference
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === execLoadingId
               ? {
-                  id: execLoadingId,
-                  role: "agent",
-                  content: selectedRoute.transferType === "bank"
-                    ? `Bank payout initiated! Reference: ${executeData.payout?.reference}`
-                    : "Transfer complete!",
-                  confirmed: true,
-                  isLoading: false,
-                }
+                id: execLoadingId,
+                role: "agent",
+                content:
+                  selectedRoute.transferType === "bank"
+                    ? `✅ Bank payout initiated! Reference: ${executeData.payout?.reference}`
+                    : "✅ Transfer complete!",
+                confirmed: true,
+                isLoading: false,
+              }
               : msg
           )
-        )
-        setIsExecuting(false)
+        );
+        setIsExecuting(false);
       }
-
     } catch (error: any) {
+      // If user rejected in Phantom, show a friendly message
+      const message = error.message?.includes("rejected")
+        ? "Transaction rejected in wallet."
+        : `Execution failed: ${error.message}`;
+
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === execLoadingId
-            ? { id: execLoadingId, role: "agent", content: `Execution failed: ${error.message}`, isLoading: false }
+            ? {
+              id: execLoadingId,
+              role: "agent",
+              content: message,
+              isLoading: false,
+            }
             : msg
         )
-      )
-      setIsExecuting(false)
+      );
+      setIsExecuting(false);
     }
-  }, [selectedRoute, simulationResult, publicKey, signTransaction])
+  }, [selectedRoute, simulationResult, publicKey, signTransaction, currentIntent]);
 
   const value = useMemo(
     () => ({
@@ -317,10 +437,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       selectRoute,
       confirmTransaction,
     }),
-    [draft, messages, selectedRoute, simulationResult, isSimulating, isExecuting, resetChat, sendMessage, selectRoute, confirmTransaction],
+    [
+      draft,
+      messages,
+      selectedRoute,
+      simulationResult,
+      isSimulating,
+      isExecuting,
+      resetChat,
+      sendMessage,
+      selectRoute,
+      confirmTransaction,
+    ]
   );
 
-  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+  return (
+    <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
+  );
 }
 
 export function useChat() {

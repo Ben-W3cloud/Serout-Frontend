@@ -9,9 +9,9 @@ import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets"
 import "@solana/wallet-adapter-react-ui/styles.css"
 
 export const SolanaWalletProvider: FC<{ children: ReactNode }> = ({ children }) => {
-  
-  const endpoint = "https://api.mainnet-beta.solana.com"
-  
+
+  const endpoint = "https://api.devnet.solana.com"//"https://api.mainnet-beta.solana.com"
+
   const wallets = useMemo(() => [], [])
 
   return (

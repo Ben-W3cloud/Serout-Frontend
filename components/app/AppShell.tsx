@@ -9,6 +9,7 @@ import { WalletConnectModal } from "@/components/modals/WalletConnectModal"
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import { cn } from "@/components/ui/cn";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletBalance } from "@/hooks/useWalletBalance";
 
 type AppShellProps = {
   children: ReactNode;
@@ -26,6 +27,7 @@ export function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const { resetChat } = useChat();
   const [walletModalOpen, setWalletModalOpen] = useState(false)
+  const balance = useWalletBalance();
 
   const handleNewChat = () => {
     resetChat();
@@ -45,7 +47,7 @@ export function AppShell({ children }: AppShellProps) {
     }
   }, [wallet, connected, connecting])
 
- return (
+  return (
     <div className="flex min-h-screen overflow-hidden bg-background text-on-background selection:bg-primary/30 selection:text-primary">
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <div className="absolute top-[-20%] left-[-10%] h-[50%] w-[50%] rounded-full bg-primary/5 blur-[120px]" />
@@ -151,11 +153,11 @@ export function AppShell({ children }: AppShellProps) {
               type="button"
               className="rounded-xl border border-primary/50 bg-gradient-to-r from-primary to-primary-container px-5 py-2.5 text-sm font-bold text-on-primary transition-all hover:shadow-[0_0_15px_rgba(0,240,255,0.4)] active:scale-95"
               onClick={() => !connected && setWalletModalOpen(true)}>
-              {connected && publicKey 
-                ? `${publicKey.toString().slice(0, 4)}...${publicKey.toString().slice(-4)}`
-                : connecting 
-                ? "Connecting..." 
-                : "Connect Wallet"
+              {connected && publicKey
+                ? `${publicKey.toString().slice(0, 4)}...${publicKey.toString().slice(-4)} · ${balance ?? "..."} SOL`
+                : connecting
+                  ? "Connecting..."
+                  : "Connect Wallet"
               }
             </button>
             <Link
@@ -171,7 +173,7 @@ export function AppShell({ children }: AppShellProps) {
           {children}
         </div>
       </main>
-       <WalletConnectModal 
+      <WalletConnectModal
         isOpen={walletModalOpen}
         onClose={() => setWalletModalOpen(false)}
       />

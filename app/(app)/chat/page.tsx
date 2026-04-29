@@ -8,10 +8,20 @@ import { RouteCardWrapper } from "@/components/chat/RouteCardWrapper";
 import { SimulationCard } from "@/components/chat/SimulationCard";
 import { useChat } from "@/components/chat/ChatContext";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { useEffect, useRef } from "react";
 
 export default function ChatPage() {
   // Pull selectRoute from context — passed to RouteCardWrapper
   const { messages, selectRoute } = useChat();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   return (
     <>
@@ -83,6 +93,7 @@ export default function ChatPage() {
 
               </MessageBubble>
             ))}
+            <div ref={messagesEndRef} />
           </>
         )}
       </ChatContainer>

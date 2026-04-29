@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     ? { accountNumber, bankName: NIGERIAN_BANKS.find(bank => message.toLowerCase().includes(bank.toLowerCase())) || "Unknown Bank", accountName: "Account Holder" }
     : message.split(" ").find((word: string) => word.length > 30) // wallet addresses are long strings
 
-  // TODO: Replace this with real Claude/OpenAI API call
+  // Replace this with real Claude/OpenAI API call
   // It should parse message and return structured transfer intent
   // Hardcoded placeholder that mimics what the AI would return
   const parsedIntent = {
