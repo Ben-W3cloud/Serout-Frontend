@@ -8,6 +8,8 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Serout - Solana AI Agent',
   description: 'Execute Solana transactions through natural language',
+  icons: {
+    icon: '/icon.png', // Points to public/icon.png
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
