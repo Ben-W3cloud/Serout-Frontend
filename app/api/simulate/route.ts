@@ -1,131 +1,99 @@
-// FILE LOCATION: app/api/simulate/route.ts
-//
-// PURPOSE: Takes a selected route and returns final simulation numbers
-// before the user confirms. This is the "preview" step.
-//
-// Called after: user clicks "Select Route" on a RouteCard
-// Returns: final output amount, fees, estimated time
+import { NextRequest, NextResponse } from 'next/server';
+import { PublicKey } from '@solana/web3.js';
+import { buildTransferTransaction, simulateTransfer } from '@/lib/solana/transactions';
+import { getSwapQuote, getSwapTransaction, simulateSwapTransaction } from '@/lib/solana/swap';
+import { simulateBankPayout } from '@/lib/solana/bank';
 
-import { NextRequest, NextResponse } from "next/server"
-import { getJupiterQuote } from "@/lib/jupiter"
-import { TOKEN_DECIMALS } from "@/constants/token"
+const TOKEN_MINTS: Record<string, string> = {
+  SOL: 'So11111111111111111111111111111111111111112',
+  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+};
 
-export async function POST(req: NextRequest) {
-  const body = await req.json()
-
-  // The frontend sends the full selected route object
-  const { route } = body
-
-  // Guard — if no route was sent, return an error
-  if (!route) {
-    return NextResponse.json(
-      { success: false, error: "No route provided" },
-      { status: 400 }
-    )
-  }
-
+export async function POST(request: NextRequest) {
   try {
-    // SWAP ROUTE — re-fetch a fresh Jupiter quote for accuracy
-    // We re-fetch because the original quote may be stale (prices change fast)
-    if (route.transferType === "swap") {
+    const body = await request.json();
+    const { route, params, userPublicKey } = body;
 
-      // Get a fresh quote using the same parameters as the original route
-      // We use the slippage from the original jupiterQuote stored on the route
-      const freshQuote = await getJupiterQuote(
-        route.inputToken,
-        route.outputToken,
-        route.inputAmount,
-        route.jupiterQuote.slippageBps // preserve original slippage choice
-      )
-
-      // Convert the raw output amount back to human-readable number
-      const outputAmount =
-        Number(freshQuote.outAmount) /
-        Math.pow(10, TOKEN_DECIMALS[route.outputToken])
-
-      // Calculate the fee amount from feeBps (basis points)
-      // feeBps of 2 means 0.02% fee
-      // formula: (outputAmount * feeBps) / 10000
-      const feeAmount = (outputAmount * freshQuote.feeBps) / 10000
-
-      return NextResponse.json({
-        success: true,
-        simulation: {
-          // What the user will actually receive
-          outputAmount,
-
-          // Fee charged by the DEX
-          feeAmount,
-
-          // Time estimate from original route
-          estimatedTime: route.estimatedTime,
-
-          // Price impact — how much this swap moves the market
-          // Negative means favorable for the user
-          priceImpact: freshQuote.priceImpactPct,
-
-          // The path the swap will take e.g. "Orca → Raydium"
-          routePath: freshQuote.routePlan
-            .map((r: any) => r.swapInfo?.label)
-            .filter(Boolean)
-            .join(" → "),
-
-          // Store the fresh quote — needed later for /api/execute
-          jupiterQuote: freshQuote,
-
-          // Pass through original route data for display
-          inputAmount: route.inputAmount,
-          inputToken: route.inputToken,
-          outputToken: route.outputToken,
-        },
-      })
+    if (!route || !params || !userPublicKey) {
+      return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     }
 
-    // DIRECT ROUTE — no API call needed, just calculate from route data
-    if (route.transferType === "direct") {
-      return NextResponse.json({
-        success: true,
-        simulation: {
-          // For direct transfers, output = input minus network fee
-          outputAmount: route.estimatedOutput,
-          feeAmount: route.estimatedFee,
-          estimatedTime: route.estimatedTime,
-          priceImpact: "0", // no price impact on direct transfers
-          routePath: route.meta.label,
-          inputAmount: route.inputAmount,
-          inputToken: route.inputToken,
-          outputToken: route.outputToken,
-        },
-      })
+    let userKey: PublicKey;
+    try {
+      userKey = new PublicKey(userPublicKey);
+    } catch {
+      return NextResponse.json({ error: 'Invalid public key' }, { status: 400 });
     }
 
-    // BANK ROUTE — mock simulation, same as direct but output is in NGN
-    if (route.transferType === "bank") {
-      return NextResponse.json({
-        success: true,
-        simulation: {
-          outputAmount: route.estimatedOutput,  // already in NGN from generateBankRoutes
-          feeAmount: route.estimatedFee,
-          estimatedTime: route.estimatedTime,
-          priceImpact: "0",
-          routePath: route.meta.label,          // e.g. "Flutterwave → GTBank (••••6789)"
-          inputAmount: route.inputAmount,
-          inputToken: route.inputToken,
-          outputToken: "NGN",
-        },
-      })
-    }
+    switch (route) {
+      case 'direct': {
+        const { recipient, amount } = params;
+        if (!recipient || !amount) {
+          return NextResponse.json({ error: 'Missing recipient or amount' }, { status: 400 });
+        }
+        try { new PublicKey(recipient); } catch {
+          return NextResponse.json({ error: 'Invalid recipient' }, { status: 400 });
+        }
 
-    // If transferType doesn't match any known type
+        const tx = await buildTransferTransaction({
+          from: userKey,
+          to: new PublicKey(recipient),
+          amount: parseFloat(amount),
+        });
+        const sim = await simulateTransfer(tx);
+        return NextResponse.json({ route: 'direct', ...sim, estimatedAmount: parseFloat(amount) });
+      }
+
+      case 'swap': {
+        const { inputToken, outputToken, amount, slippageBps = 50 } = params;
+        if (!inputToken || !outputToken || !amount) {
+          return NextResponse.json({ error: 'Missing swap params' }, { status: 400 });
+        }
+
+        const inputMint = TOKEN_MINTS[inputToken.toUpperCase()] || inputToken;
+        const outputMint = TOKEN_MINTS[outputToken.toUpperCase()] || outputToken;
+
+        const quote = await getSwapQuote({
+          inputMint,
+          outputMint,
+          amount: Math.floor(parseFloat(amount) * 1e9),
+          slippageBps,
+        });
+
+        const { swapTransaction } = await getSwapTransaction(quote, userKey);
+        const sim = await simulateSwapTransaction(swapTransaction);
+
+        return NextResponse.json({
+          route: 'swap',
+          ...sim,
+          estimatedAmount: parseFloat(quote.outAmount) / 1e9,
+          priceImpact: parseFloat(quote.priceImpactPct),
+          slippage: slippageBps / 100,
+        });
+      }
+
+      case 'bank': {
+        const { amount, currency = 'USD' } = params;
+        if (!amount) return NextResponse.json({ error: 'Missing amount' }, { status: 400 });
+        const sim = await simulateBankPayout(parseFloat(amount), currency);
+        return NextResponse.json({
+          route: 'bank',
+          success: sim.success,
+          estimatedFee: sim.estimatedFee,
+          estimatedAmount: sim.estimatedAmount,
+          raw: sim,
+        });
+      }
+
+      default:
+        return NextResponse.json({ error: 'Invalid route' }, { status: 400 });
+    }
+  } catch (error) {
+    console.error('Simulate API error:', error);
     return NextResponse.json(
-      { success: false, error: "Unknown transfer type" },
-      { status: 400 }
-    )
-
-  } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: error instanceof Error ? error.message : 'Simulation failed' },
       { status: 500 }
-    )
+    );
   }
 }

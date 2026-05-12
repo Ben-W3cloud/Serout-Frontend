@@ -1,49 +1,20 @@
-import type { Metadata } from "next";
-import { Manrope, Space_Grotesk } from "next/font/google";
-import "./globals.css";
-import { SolanaWalletProvider } from "@/components/WalletProvider";
-import { useMemo } from "react";
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { Providers } from '@/components/providers';
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
-  subsets: ["latin"],
-});
-
-const manrope = Manrope({
-  variable: "--font-manrope",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Serout - Route Your Money Smarter",
-  description:
-    "Choose how your money moves. Simulate before you send with Serout's precision cross-chain routing experience.",
+  title: 'Serout - Solana AI Agent',
+  description: 'Execute Solana transactions through natural language',
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${spaceGrotesk.variable} ${manrope.variable} h-full antialiased`}
-    >
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-        />
-      </head>
-      <body className="min-h-full bg-background font-body text-on-background">
-        <SolanaWalletProvider>
-          {children}
-        </SolanaWalletProvider>
+    <html lang="en" className="dark">
+      <body className={inter.className}>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

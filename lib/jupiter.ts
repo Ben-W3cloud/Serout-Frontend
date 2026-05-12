@@ -1,112 +1,208 @@
-// imports needed
-import { toSmallestUnit, SOLANA_TOKEN_MINTS, TOKEN_DECIMALS } from "@/constants/token"
-import { SeroutRoute } from "@/types/routes";
+import {
+  fromSmallestUnit,
+  SOLANA_TOKEN_MINTS,
+  TOKEN_DECIMALS,
+  toSmallestUnit,
+} from "@/constants/token";
+import type { SeroutRoute, TokenSymbol } from "@/types/routes";
 
-export async function getJupiterQuote(
-  inputToken: string,
-  outputToken: string,
-  amount: number, slippageBps: number = 50
-) {
-  // 1. convert amount to smallest unit using your helper
-  const newAmount = toSmallestUnit(amount, inputToken); 
+const JUPITER_SWAP_V2_API = "https://api.jup.ag/swap/v2";
 
-  // 2. get the mint addresses from your constants
-   const inputMint = SOLANA_TOKEN_MINTS[inputToken]
-   const outputMint = SOLANA_TOKEN_MINTS[outputToken]
+type JupiterOrderParams = {
+  inputToken: TokenSymbol;
+  outputToken: TokenSymbol;
+  amount: number;
+  slippageBps?: number;
+  taker?: string;
+};
 
-  // 3. build the Jupiter quote URL
-   const JUP_QUOTE_API = "https://api.jup.ag/swap/v2/order";
+export type JupiterOrder = {
+  requestId?: string;
+  transaction?: string;
+  outAmount?: string;
+  outputAmount?: string;
+  priceImpactPct?: string;
+  routePlan?: Array<{ swapInfo?: { label?: string } }>;
+  router?: string;
+  mode?: string;
+  lastValidBlockHeight?: number;
+  signatureFeeLamports?: number;
+  prioritizationFeeLamports?: number;
+  error?: string;
+};
 
-   const url = `${JUP_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${newAmount}&slippageBps=${slippageBps}`;
+export type JupiterExecuteResult = {
+  status?: "Success" | "Failed";
+  signature?: string;
+  error?: string;
+  code?: number;
+  slot?: string;
+};
 
-  // 4. fetch it
+export async function getJupiterOrder({
+  inputToken,
+  outputToken,
+  amount,
+  slippageBps = 50,
+  taker,
+}: JupiterOrderParams): Promise<JupiterOrder> {
+  const apiKey = process.env.JUPITER_API_KEY;
+  if (!apiKey) {
+    throw new Error("JUPITER_API_KEY is not configured.");
+  }
 
-   const quote = await fetch(url, {
+  const inputMint = SOLANA_TOKEN_MINTS[inputToken];
+  const outputMint = SOLANA_TOKEN_MINTS[outputToken];
+  const rawAmount = toSmallestUnit(amount, inputToken);
+
+  if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
+    throw new Error("Swap amount must be greater than zero.");
+  }
+
+  const params = new URLSearchParams({
+    inputMint,
+    outputMint,
+    amount: String(rawAmount),
+    slippageBps: String(slippageBps),
+  });
+
+  if (taker) params.set("taker", taker);
+
+  const response = await fetch(`${JUPITER_SWAP_V2_API}/order?${params}`, {
     headers: {
-        'Authorization': `Bearer ${process.env.JUPITER_API_KEY}`
-        }
-    })
+      Accept: "application/json",
+      "x-api-key": apiKey,
+    },
+    cache: "no-store",
+  });
 
-   if (!quote.ok) {
-      throw new Error(`Jupiter quote failed: ${quote.status}`)
-    }
-   const response = await quote.json()
+  const data = (await response.json().catch(() => null)) as JupiterOrder | null;
 
-  // 5. return the json response
-  return response
+  if (!response.ok || !data) {
+    throw new Error(
+      `Jupiter order failed (${response.status}): ${data?.error || response.statusText}`,
+    );
+  }
+
+  if (data.error) {
+    throw new Error(`Jupiter order failed: ${data.error}`);
+  }
+
+  return data;
+}
+
+export async function executeJupiterSwap(
+  signedTransaction: string,
+  requestId: string,
+): Promise<JupiterExecuteResult> {
+  const apiKey = process.env.JUPITER_API_KEY;
+  if (!apiKey) {
+    throw new Error("JUPITER_API_KEY is not configured.");
+  }
+
+  const response = await fetch(`${JUPITER_SWAP_V2_API}/execute`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      signedTransaction,
+      requestId,
+    }),
+    cache: "no-store",
+  });
+
+  const data = (await response.json().catch(() => null)) as JupiterExecuteResult | null;
+
+  if (!response.ok || !data) {
+    throw new Error(
+      `Jupiter execute failed (${response.status}): ${data?.error || response.statusText}`,
+    );
+  }
+
+  return data;
 }
 
 export async function generateSwapRoutes(
-  inputToken: string,
-  outputToken: string,
-  amount: number
-): Promise< SeroutRoute[]> {
+  inputToken: TokenSymbol,
+  outputToken: TokenSymbol,
+  amount: number,
+): Promise<SeroutRoute[]> {
+  const variants = [
+    { id: "swap-fastest", tag: "Fastest" as const, slippageBps: 100, time: "~20s" },
+    { id: "swap-cheapest", tag: "Cheapest" as const, slippageBps: 30, time: "~60s" },
+    { id: "swap-best-value", tag: "Best Value" as const, slippageBps: 50, time: "~35s" },
+  ];
 
-  // call getJupiterQuote 3 times with different slippageBps
-  // hint: you'll need to update getJupiterQuote to accept slippage as a parameter
+  const orders = await Promise.all(
+    variants.map((variant) =>
+      getJupiterOrder({
+        inputToken,
+        outputToken,
+        amount,
+        slippageBps: variant.slippageBps,
+      }),
+    ),
+  );
 
-  const [fastQuote, cheapQuote, bestQuote] = await Promise.all([
-    getJupiterQuote(inputToken, outputToken, amount, 100),
-    getJupiterQuote(inputToken, outputToken, amount, 10),
-    getJupiterQuote(inputToken, outputToken, amount, 50),
-  ])
+  return variants.map((variant, index) => {
+    const order = orders[index];
+    const outAmount = getOutputAmount(order, outputToken);
+    const fee = estimateNetworkFee(order);
 
-//   now build a SeroutRoute object for each quote
-//   for fastQuote, tag = "Fastest"
-
-  const fastRoute : SeroutRoute = {
-     id: `fast-${Date.now()}`,              // unique id for this route
-      tag: "Fastest",
+    return {
+      id: variant.id,
+      tag: variant.tag,
       transferType: "swap",
-      inputAmount:amount,
+      inputAmount: amount,
       inputToken,
       outputToken,
-      estimatedOutput: Number(fastQuote.outAmount) / Math.pow(10, TOKEN_DECIMALS[outputToken]),
-      estimatedFee:  (Number(fastQuote.outAmount) * fastQuote.feeBps) / 10000,
-      estimatedTime: "~15s",
-      jupiterQuote: fastQuote,
+      estimatedOutput: outAmount,
+      estimatedFee: fee,
+      estimatedTime: variant.time,
+      slippageBps: variant.slippageBps,
       meta: {
-       label: fastQuote.routePlan.map((r: any) => r.swapInfo.label).join(" → "),
-       reliable: false
-      }
-    }
+        label: routeLabel(order),
+        reliable: variant.tag !== "Fastest",
+        provider: "Jupiter",
+        network: "mainnet-beta",
+      },
+    };
+  });
+}
 
-    // for cheapRoute, tag = "Cheapest"
-    const cheapRoute : SeroutRoute = {
-     id: `cheap-${Date.now()}`,              // unique id for this route
-      tag: "Cheapest",
-      transferType: "swap",
-      inputAmount:amount,
-      inputToken,
-      outputToken,
-      estimatedOutput: Number(cheapQuote.outAmount) / Math.pow(10, TOKEN_DECIMALS[outputToken]),
-      estimatedFee: (Number(cheapQuote.outAmount) * cheapQuote.feeBps) / 10000,
-      estimatedTime: "~40s",
-      jupiterQuote: cheapQuote,
-      meta: {
-       label: cheapQuote.routePlan.map((r: any) => r.swapInfo.label).join(" → "),
-       reliable: true
-      }
-    }
+export function getOutputAmount(order: JupiterOrder, outputToken: TokenSymbol): number {
+  const rawAmount = order.outAmount || order.outputAmount || "0";
+  return fromSmallestUnit(rawAmount, outputToken);
+}
 
-    // for bestRoute, tag = "Best Value"
-    const bestRoute : SeroutRoute = {
-     id: `best-${Date.now()}`,              // unique id for this route
-      tag: "Best Value",
-      transferType: "swap",
-      inputAmount:amount,
-      inputToken,
-      outputToken,
-      estimatedOutput: Number(bestQuote.outAmount) / Math.pow(10, TOKEN_DECIMALS[outputToken]),
-      estimatedFee: (Number(bestQuote.outAmount) * bestQuote.feeBps) / 10000,
-      estimatedTime: "~20s",
-      jupiterQuote: bestQuote,
-      meta: {
-       label: bestQuote.routePlan.map((r: any) => r.swapInfo.label).join(" → "),
-       reliable: true
-      }
-    }
+export function getPriceImpact(order: JupiterOrder): number {
+  const impact = Number(order.priceImpactPct ?? 0);
+  return Number.isFinite(impact) ? impact * 100 : 0;
+}
 
-    const routes : SeroutRoute[] = [fastRoute,cheapRoute, bestRoute]
-    return routes
+export function routeLabel(order: JupiterOrder): string {
+  const labels =
+    order.routePlan
+      ?.map((route) => route.swapInfo?.label)
+      .filter((label): label is string => Boolean(label)) ?? [];
+
+  if (labels.length > 0) return labels.join(" to ");
+  if (order.router) return `Jupiter ${order.router}`;
+  if (order.mode) return `Jupiter ${order.mode}`;
+  return "Jupiter Aggregated";
+}
+
+function estimateNetworkFee(order: JupiterOrder): number {
+  const lamports =
+    Number(order.signatureFeeLamports ?? 0) +
+    Number(order.prioritizationFeeLamports ?? 0);
+
+  if (!Number.isFinite(lamports) || lamports <= 0) {
+    return 0.000025;
+  }
+
+  return lamports / 10 ** TOKEN_DECIMALS.SOL;
 }

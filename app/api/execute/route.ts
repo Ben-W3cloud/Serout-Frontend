@@ -1,128 +1,72 @@
-// FILE LOCATION: app/api/execute/route.ts
-//
-// PURPOSE: Takes the confirmed simulation and executes the actual transaction.
-// For swaps — builds the Jupiter transaction and returns it unsigned.
-// For direct — builds a simple SOL/token transfer transaction.
-// For bank — triggers the mock payout flow.
-//
-// IMPORTANT: This route NEVER signs the transaction.
-// Signing always happens on the FRONTEND using the user's wallet.
-// This route just builds and returns the unsigned transaction.
+import { NextRequest, NextResponse } from 'next/server';
+import { PublicKey } from '@solana/web3.js';
+import { buildTransferTransaction } from '@/lib/solana/transactions';
+import { getSwapQuote, getSwapTransaction } from '@/lib/solana/swap';
+import { executeMockBankPayout } from '@/lib/solana/bank';
 
-import { NextRequest, NextResponse } from "next/server"
+const TOKEN_MINTS: Record<string, string> = {
+  SOL: 'So11111111111111111111111111111111111111112',
+  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+};
 
-export async function POST(req: NextRequest) {
-  const body = await req.json()
-
-  // Frontend sends: the simulation result + the user's wallet address
-  const { simulation, route, fromAddress } = body
-
-  // Guard — all three are required
-  if (!simulation || !route || !fromAddress) {
-    return NextResponse.json(
-      { success: false, error: "Missing simulation, route, or fromAddress" },
-      { status: 400 }
-    )
-  }
-
+export async function POST(request: NextRequest) {
   try {
+    const body = await request.json();
+    const { route, params, userPublicKey } = body;
 
-    // SWAP EXECUTION
-    // Ask Jupiter to build the actual swap transaction using the fresh quote
-    if (route.transferType === "swap") {
+    if (!route || !params || !userPublicKey) {
+      return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+    }
 
-      // Jupiter's /order endpoint gave us a quote
-      // Now we call /execute concept — we POST to Jupiter's swap endpoint
-      // with the quote + user's wallet address
-      // Jupiter returns a serialized (pre-built) transaction ready to be signed
+    const userKey = new PublicKey(userPublicKey);
 
-      const jupiterSwapResponse = await fetch("https://api.jup.ag/swap/v2/swap", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Your Jupiter API key from .env.local
-          "Authorization": `Bearer ${process.env.JUPITER_API_KEY}`
-        },
-        body: JSON.stringify({
-          // The fresh quote stored in simulation
-          quoteResponse: simulation.jupiterQuote,
-
-          // The user's wallet — Jupiter needs this to build the transaction
-          userPublicKey: fromAddress,
-
-          // Wrap/unwrap SOL automatically if needed
-          wrapAndUnwrapSol: true,
-        })
-      })
-
-      if (!jupiterSwapResponse.ok) {
-        throw new Error(`Jupiter swap build failed: ${jupiterSwapResponse.status}`)
+    switch (route) {
+      case 'direct': {
+        const { recipient, amount } = params;
+        const tx = await buildTransferTransaction({
+          from: userKey,
+          to: new PublicKey(recipient),
+          amount: parseFloat(amount),
+        });
+        return NextResponse.json({
+          success: true,
+          transaction: tx.serialize({ requireAllSignatures: false }).toString('base64'),
+        });
       }
 
-      const swapData = await jupiterSwapResponse.json()
+      case 'swap': {
+        const { inputToken, outputToken, amount, slippageBps = 50 } = params;
+        const quote = await getSwapQuote({
+          inputMint: TOKEN_MINTS[inputToken.toUpperCase()] || inputToken,
+          outputMint: TOKEN_MINTS[outputToken.toUpperCase()] || outputToken,
+          amount: Math.floor(parseFloat(amount) * 1e9),
+          slippageBps,
+        });
+        const { swapTransaction } = await getSwapTransaction(quote, userKey);
+        return NextResponse.json({ success: true, transaction: swapTransaction });
+      }
 
-      // Return the serialized transaction to the frontend
-      // The frontend will pass this to the wallet adapter to sign
-      return NextResponse.json({
-        success: true,
-        type: "swap",
+      case 'bank': {
+        const { amount, currency = 'USD' } = params;
+        const result = await executeMockBankPayout(parseFloat(amount), currency);
+        return NextResponse.json({
+          success: result.success,
+          referenceId: result.referenceId,
+          signature: result.signature,
+          status: result.status,
+          estimatedCompletion: result.estimatedCompletion,
+        });
+      }
 
-        // This is the unsigned transaction — a base64 encoded string
-        // Frontend does: wallet.signTransaction(deserialize(swapTransaction))
-        swapTransaction: swapData.swapTransaction,
-
-        // Pass simulation data through for display after execution
-        simulation,
-      })
+      default:
+        return NextResponse.json({ error: 'Invalid route' }, { status: 400 });
     }
-
-    // DIRECT TRANSFER EXECUTION
-    // For direct transfers we return the transfer parameters
-    // The frontend uses @solana/web3.js to build and sign the transaction itself
-    if (route.transferType === "direct") {
-      return NextResponse.json({
-        success: true,
-        type: "direct",
-
-        // The frontend needs these to build the SystemProgram.transfer transaction
-        transfer: {
-          fromAddress,
-          toAddress: route.jupiterQuote?.destination ?? body.destination,
-          amount: route.inputAmount,
-          token: route.inputToken,
-        },
-        simulation,
-      })
-    }
-
-    // BANK PAYOUT EXECUTION
-    // Trigger the mock payout — in real life this calls Flutterwave/Paystack API
-    if (route.transferType === "bank") {
-      return NextResponse.json({
-        success: true,
-        type: "bank",
-
-        // Mock payout confirmation
-        // In production: call payout provider API here
-        payout: {
-          status: "processing",
-          reference: `SEROUT-${Date.now()}`,
-          gateway: route.meta.label.split(" → ")[0], // e.g. "Flutterwave"
-          estimatedTime: route.estimatedTime,
-        },
-        simulation,
-      })
-    }
-
+  } catch (error) {
+    console.error('Execute API error:', error);
     return NextResponse.json(
-      { success: false, error: "Unknown transfer type" },
-      { status: 400 }
-    )
-
-  } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: error instanceof Error ? error.message : 'Execution failed' },
       { status: 500 }
-    )
+    );
   }
 }
