@@ -1,4 +1,4 @@
-import { SimulationResult } from '@/types';
+import  type { SimulationResult } from '@/types';
 import { cn } from '@/lib/utils';
 import { CheckCircle2, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
 
