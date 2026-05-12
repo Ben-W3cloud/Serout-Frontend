@@ -16,7 +16,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
   const network = WalletAdapterNetwork.Devnet;
   const endpoint = useMemo(() => 
-    process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl(network), []
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl(network), [network]
   );
   
   const wallets = useMemo(() => [
