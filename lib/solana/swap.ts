@@ -59,7 +59,7 @@ export async function simulateSwapTransaction(swapTransactionBase64: string) {
 
     return {
       success: true,
-      fee: (simulation.value.fee || 5000) / 1e9,
+      fee: (simulation.value.unitsConsumed || 5000) / 1e9,
       priceImpact: 0,
     };
   } catch (error) {

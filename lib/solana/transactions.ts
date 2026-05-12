@@ -51,7 +51,7 @@ export async function simulateTransfer(transaction: Transaction) {
 
     return {
       success: true,
-      fee: (simulation.value.fee || 5000) / LAMPORTS_PER_SOL,
+      fee: (simulation.value.unitsConsumed || 5000) / LAMPORTS_PER_SOL,
       logs: simulation.value.logs || [],
     };
   } catch (error) {
